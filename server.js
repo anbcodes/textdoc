@@ -25,6 +25,16 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on('upgrade', (req, socket, head) => {
+  if (req.url === '/ws') {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
 // WebSocket server attached to the HTTP server
 const wss = new WebSocketServer({ server, path: '/ws' });
 let doc = [
