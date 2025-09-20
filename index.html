@@ -155,8 +155,10 @@
 
       let doc = "";
       let server = "/ws"
+      const url = new URL(server, location.href);
+      url.protocol = 'wss';
+      const ws = new WebSocket(url);
 
-      let ws = new WebSocket(server);
       ws.addEventListener("message", (ev) => {
         console.log(ev.data);
         let data = JSON.parse(ev.data);
