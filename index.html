@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Let's text</title>
+    <style>
+      body, html {
+        padding: 0px;
+        margin: 0px;
+        overflow: hidden;
+        background-color: black;
+      }
+
+      textarea {
+        font-family: monospace;
+        background-color: black;
+        color: green;
+        border: 0px;
+        margin: 0px;
+        &:focus {
+          outline: none;
+        }
+      }
+
+      #main {
+        width: 100vw;
+        height: 80vh;
+        overflow: scroll;
+      }
+
+      #text {
+        overflow: scroll;
+        flex-grow: 1;
+        height: calc(100% - 2px);
+      }
+
+      #texting-box {
+        width: 100vw;
+        height: 15vh;
+        border-top: solid green 1px;
+        padding: 1px;
+        display: flex;
+        align-items: center;
+      }
+
+      button {
+        padding: 2px;
+        font-family: monospace;
+        background-color: black;
+        color: green;
+        display: block;
+        border: solid green 1px;
+        height: 30px;
+        margin: 0px 0px;
+        box-shadow: 0px 2px 0px green; /* Shadow when pressed */
+
+        &:active {
+          box-shadow: 0px 0px 0px green; /* Shadow when pressed */
+          transform: translateY(2px); /* Pressed effect */
+        }
+      }
+
+      #button-box {
+        display: flex;
+        gap: 5px;
+        padding: 5px;
+        justify-content: right;
+        height: 5vh;
+      }
+    </style>
+  </head>
+  <body>
+    <textarea id="main"></textarea>
+    <div id="button-box">
+        <button onclick="send()">SEND</button>
+        <button onclick="setname()">SET NAME</button>
+    </div>
+
+    <div id="texting-box">
+       <textarea id="text"></textarea>
+    </div>
+    <script>
+      if (!localStorage.getItem("name")) {
+        localStorage.setItem("name", "unnamed");
+      }
+      let name = "cool";
+      function send() {
+        const text = document.getElementById("text").value;
+        if (!text) return;
+        sendUpdates([['i', doc.length, `\n<${localStorage.getItem("name")}> ${text}`]])
+        //document.getElementById("main").value += `<${localStorage.getItem("name")}> ${text}\n`;
+        document.getElementById("text").value = ''
+      }
+
+      function setname() {
+        const text = document.getElementById("text").value;
+        if (!text) return;
+        let old = localStorage.getItem("name");
+        localStorage.setItem("name", text);
+
+        sendUpdates([['i', doc.length, `\n${old} changed name to ${text}`]])
+        document.getElementById("text").value = ''
+      }
+
+      document.getElementById('text').addEventListener("keydown", (e) => {
+        if (e.key === 'Enter') {
+          send();
+          e.preventDefault();
+        }
+      })
+
+      function sendUpdates(updates) {
+        applyChanges(updates, false);
+        ws.send(JSON.stringify(updates))
+      }
+
+      let textarea = document.getElementById('main');
+
+      textarea.addEventListener("keydown", (ev) => {
+        console.log(ev)
+        let prevent=true;
+        let map = {
+          'Enter': '\n'
+        }
+        let key = map[ev.key] ?? ev.key;
+        if (key.match(/^[^]$/) && !ev.metaKey && !ev.ctrlKey) {
+          if (textarea.selectionStart !== textarea.selectionEnd) {
+            sendUpdates([['d', textarea.selectionStart, textarea.selectionEnd]]);
+            textarea.selectionEnd = textarea.selectionStart;
+          }
+          sendUpdates([['i', textarea.selectionStart, key]])
+          textarea.selectionStart += 1;
+          textarea.selectionEnd = textarea.selectionStart;
+        } else if (key === 'Backspace') {
+          if (textarea.selectionStart === textarea.selectionEnd) {
+            let len = doc.length;
+            sendUpdates([['d', textarea.selectionStart - 1, textarea.selectionStart]])
+            console.log({s:textarea.selectionStart, len})
+            if (textarea.selectionStart < len) textarea.selectionStart--;
+            textarea.selectionEnd = textarea.selectionStart;
+          } else {
+            sendUpdates([['d', textarea.selectionStart, textarea.selectionEnd]])
+            textarea.selectionEnd = textarea.selectionStart;
+          }
+        } else {
+          prevent = false;
+        }
+
+        if (prevent) ev.preventDefault();
+      })
+
+      let doc = "";
+      let server = "/ws"
+
+      let ws = new WebSocket(server);
+      ws.addEventListener("message", (ev) => {
+        console.log(ev.data);
+        let data = JSON.parse(ev.data);
+        applyChanges(data);
+      })
+
+      function applyChanges(changes, doUpdateSelection = true) {
+        let scrollTop = textarea.scrollTop;
+        let scrollHeight = textarea.scrollHeight;
+        let atEnd = scrollTop >= (scrollHeight - textarea.clientHeight - 10);
+        console.log({scrollTop, scrollHeight, atEnd});
+
+        let selectionStart = textarea.selectionStart;
+        let selectionEnd = textarea.selectionEnd;
+
+        const updateSelection = (loc, length) => {
+          if (!doUpdateSelection) return;
+          if (loc < selectionStart) {
+            selectionStart += length;
+            selectionEnd += length;
+          }
+
+          if (loc > selectionStart && loc < selectionEnd) {
+            selectionEnd += length;
+          }
+        }
+
+        for (let update of changes) {
+          let [type, ...args] = update;
+          console.log("processing", type, ...args);
+          if (type === 'i') {
+            let [loc, text] = args;
+            doc = doc.slice(0, loc) + text + doc.slice(loc);
+            updateSelection(loc, text.length);
+          } else if (type === 'd') {
+            let [start, end] = args;
+            doc = doc.slice(0, start) + doc.slice(end);
+            updateSelection(end, end-start); 
+          }
+        }
+
+        textarea.value = doc;
+        textarea.setSelectionRange(selectionStart, selectionEnd);
+
+        // Need the requestAnimationFrame to cause it to happen after all the modifications
+        requestAnimationFrame(() => {
+          if (atEnd) {
+            textarea.scrollTo(0, textarea.scrollHeight);
+          } else {
+            textarea.scrollTo(0, scrollTop);
+          }
+        })
+      }
+    </script>
+  </body>
+</html>
