@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 8080;
+const PORT = +(process.argv[2] ?? 8080);
 
 // HTTP server to serve index.html
 const server = http.createServer(async (req, res) => {
