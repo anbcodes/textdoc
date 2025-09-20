@@ -1,14 +1,16 @@
 import http from 'http';
-import {readFile} from 'fs/promises';
+import {readFile, writeFile} from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
+import { readFileSync } from 'fs';
 
 // Get __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = +(process.argv[2] ?? 8080);
+let stateFile = "./state.json"
 
 // HTTP server to serve index.html
 const server = http.createServer(async (req, res) => {
@@ -25,9 +27,24 @@ const server = http.createServer(async (req, res) => {
 
 // WebSocket server attached to the HTTP server
 const wss = new WebSocketServer({ server, path: '/ws' });
-const doc = [
+let doc = [
   ['i', 0, 'hello world!'],
 ];
+
+try {
+  let content = readFileSync(stateFile, 'utf8');
+  doc = JSON.parse(content)
+} catch (e) {
+  console.log("No save found")
+}
+
+let changed = true;
+setInterval(() => {
+  if (changed) {
+    writeFile(stateFile, JSON.stringify(doc));
+    changed = false;
+  }
+}, 1000);
 
 wss.on('connection', (ws) => {
   console.log('New client connected');
@@ -38,6 +55,7 @@ wss.on('connection', (ws) => {
     console.log(`Received: ${msg}`);
 
     doc.push(...JSON.parse(msg));
+    changed = true;
 
     for (const client of wss.clients) {
       if (client.readyState === ws.OPEN && client !== ws) {
